@@ -219,6 +219,7 @@ try:
             continue
         if step.lower().startswith("dtr="):
             level = int(step.split("=", 1)[1])
+            # Linux pyserial 直接控制信号线电平
             port.dtr = (level == 1)
         elif step.lower().startswith("rts="):
             level = int(step.split("=", 1)[1])
@@ -264,15 +265,54 @@ invoke_stm32flash_on_port() {
     local exe="$1" port_name="$2" allow_fail="${3:-false}"
     shift 3
     local -a extra_args=("$@")
+    local attempt max_attempts=3
+    local output code
 
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        if [[ "$attempt" -gt 1 ]]; then
+            echo "  重试 $attempt/$max_attempts: 重新进入 BootLoader..."
+            sleep 0.5
+        fi
+
+        if [[ "$USE_INIT" == true ]] && is_dtr_rts_sequence "$INIT_SEQUENCE"; then
+            invoke_serial_dtr_rts "$port_name" "$BAUD" "$INIT_SEQUENCE"
+            sleep 0.2
+        fi
+
+        local -a base_args=()
+        while IFS= read -r -d '' arg; do base_args+=("$arg"); done < <(get_base_flash_args)
+
+        echo ">>> $exe ${base_args[*]} ${extra_args[*]} $port_name"
+        set +e
+        output="$("$exe" "${base_args[@]}" "${extra_args[@]}" "$port_name" 2>&1)"
+        code=$?
+        set -e
+        [[ -n "$output" ]] && echo "$output"
+
+        if [[ "$code" -eq 0 || "$allow_fail" == true ]]; then
+            return "$code"
+        fi
+
+        if [[ "$output" == *"Failed to init device"* ]]; then
+            continue
+        fi
+
+        echo "stm32flash 失败，退出码: $code" >&2
+        exit "$code"
+    done
+
+    echo "stm32flash 失败，退出码: $code" >&2
+    exit "$code"
+}
+
+wait_after_mcu_reset() {
+    local reason="${1:-MCU 复位}"
+    echo "  等待 ${reason}..."
+    sleep 1.2
     if [[ "$USE_INIT" == true ]] && is_dtr_rts_sequence "$INIT_SEQUENCE"; then
-        invoke_serial_dtr_rts "$port_name" "$BAUD" "$INIT_SEQUENCE"
-        sleep 0.1
+        invoke_serial_dtr_rts "$PORT" "$BAUD" "$INIT_SEQUENCE"
+        sleep 0.3
     fi
-
-    local -a base_args=()
-    while IFS= read -r -d '' arg; do base_args+=("$arg"); done < <(get_base_flash_args)
-    invoke_stm32flash "$exe" "$allow_fail" "${base_args[@]}" "${extra_args[@]}" "$port_name"
 }
 
 test_bootloader_port() {
@@ -410,11 +450,13 @@ invoke_flash_workflow() {
             if [[ "$SKIP_UNPROTECT" != true ]]; then
                 echo "[1/3] 解除读保护"
                 invoke_stm32flash_on_port "$exe" "$PORT" false "-k"
+                wait_after_mcu_reset "解除读保护后 MCU 复位"
             else
                 echo "[1/3] 跳过解除读保护"
             fi
             echo "[2/3] 擦除 Flash"
             invoke_stm32flash_on_port "$exe" "$PORT" false "-o"
+            wait_after_mcu_reset "擦除完成后"
             echo "[3/3] 写入固件"
             local -a write_args=("-w" "$firmware_path")
             [[ "$SKIP_VERIFY" != true ]] && write_args+=("-v")

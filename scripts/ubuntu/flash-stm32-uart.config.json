@@ -1,0 +1,8 @@
+{
+  "Port": "/dev/ttyACM0",
+  "Baud": 115200,
+  "InitSequence": "dtr=0,rts=1,-100,dtr=1",
+  "UseInit": true,
+  "LastFirmware": "/home/jimmy/project/rosrobotcontrollerm4_motor_ps2/PlatformIO/.pio/build/release/firmware.bin",
+  "LastMode": "Full"
+}
