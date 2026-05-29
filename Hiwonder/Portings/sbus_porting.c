@@ -10,7 +10,7 @@
  */
 
 #include <stdio.h>
-#include "SBus.h"
+#include "sbus.h"
 #include "lwmem_porting.h"
 #include "lwrb.h"
 #include "usart.h"

@@ -1,6 +1,6 @@
 param(
-    [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/..").Path,
-    [string]$Environment = "stm32f407ve"
+    [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/../..").Path,
+    [string]$Environment = "release"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,11 +13,11 @@ if (!(Test-Path $platformioDir)) {
 
 Write-Host "Project root: $ProjectRoot"
 Write-Host "PlatformIO dir: $platformioDir"
-Write-Host "开始编译环境: $Environment"
+Write-Host "开始下载到 ST-Link, 环境: $Environment"
 
 Push-Location $platformioDir
 try {
-    python -m platformio run -e $Environment
+    python -m platformio run -e $Environment -t upload
 }
 finally {
     Pop-Location

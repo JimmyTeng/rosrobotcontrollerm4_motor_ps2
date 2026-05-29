@@ -4,13 +4,21 @@
     {
       "label": "PlatformIO: Build",
       "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/scripts/build-platformio.ps1"
-      ],
+      "windows": {
+        "command": "powershell",
+        "args": [
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/windows/build-platformio.ps1"
+        ]
+      },
+      "linux": {
+        "command": "${workspaceFolder}/scripts/ubuntu/build-platformio.sh"
+      },
+      "osx": {
+        "command": "${workspaceFolder}/scripts/ubuntu/build-platformio.sh"
+      },
       "group": {
         "kind": "build",
         "isDefault": true
@@ -22,13 +30,21 @@
     {
       "label": "PlatformIO: Upload (ST-Link)",
       "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/scripts/upload-platformio.ps1"
-      ],
+      "windows": {
+        "command": "powershell",
+        "args": [
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/windows/upload-platformio.ps1"
+        ]
+      },
+      "linux": {
+        "command": "${workspaceFolder}/scripts/ubuntu/upload-platformio.sh"
+      },
+      "osx": {
+        "command": "${workspaceFolder}/scripts/ubuntu/upload-platformio.sh"
+      },
       "problemMatcher": [
         "$gcc"
       ]
@@ -36,13 +52,21 @@
     {
       "label": "PlatformIO: Update Compile DB",
       "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/scripts/update-compile-commands.ps1"
-      ],
+      "windows": {
+        "command": "powershell",
+        "args": [
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "${workspaceFolder}/scripts/windows/update-compile-commands.ps1"
+        ]
+      },
+      "linux": {
+        "command": "${workspaceFolder}/scripts/ubuntu/update-compile-commands.sh"
+      },
+      "osx": {
+        "command": "${workspaceFolder}/scripts/ubuntu/update-compile-commands.sh"
+      },
       "problemMatcher": []
     }
   ]

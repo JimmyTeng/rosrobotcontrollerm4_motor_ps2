@@ -1,5 +1,5 @@
 param(
-    [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/..").Path,
+    [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/../..").Path,
     [string]$Port,
     [int]$Baud = 115200,
     [string]$InitSequence,
@@ -80,7 +80,7 @@ function Resolve-Stm32Flash {
 未找到 stm32flash。
 
 请先运行（无需 Chocolatey）:
-  .\scripts\install-stm32flash.bat
+  .\scripts\windows\install-stm32flash.bat
 
 或手动下载解压:
   https://sourceforge.net/projects/stm32flash/files/stm32flash-0.5-win64.zip/download
