@@ -61,3 +61,35 @@ MDK-ARM/EventRecorderStub.scvd
 MDK-ARM/RosRobotControllerM4.uvguix.*
 MDK-ARM/RTE/
 .mxproject
+
+# Keil uVision additional build artifacts
+*.axf
+*.crf
+*.dep
+*.lnp
+*.iex
+*.htm
+*.tra
+*.fed
+*.fcf
+*.build_log.htm
+
+# PlatformIO build / cache / generated
+PlatformIO/.pio/
+PlatformIO/.cache/
+PlatformIO/compile_commands.json
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Downloaded flash tools (install via scripts/install-stm32flash.ps1)
+scripts/tools/stm32flash/
+scripts/tools/*.zip
+
+# Doc conversion logs
+doc/_conversion_log.txt
