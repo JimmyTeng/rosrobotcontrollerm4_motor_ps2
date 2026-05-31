@@ -15,20 +15,20 @@
   *                        opensource.org/licenses/BSD-3-Clause
   * 
   * ********************************************
-  *   main()函数，单片机入口函数 
+  *   main()?????????? 
   * 
-  *   ! ! ! 注意
-  *   该工程使用了 FreeRTOS系统  
-  *   用户的入口函数在 Hiwonder/System文件夹中的app.c文件中的app_task_entry()线程任务�?   
-  *   �?要其他线程任务，则需创建其他线程（建议在STM32CubeMX软件中创建）
+  *   ! ! ! ??
+  *   ?????? FreeRTOS??  
+  *   ???????? Hiwonder/System?????app.c????app_task_entry()??????   
+  *   ??????????????????????STM32CubeMX??????
   *   
-  *   ! ! ! 注意
-  *   在CubeMX中创建的文件中，
-  *   用户程序与注�? 都需要写在以下注释的中间，才不会在使用CubeMX更改配置之后，导致用户程序被覆盖�? !!! 
-  *   (若不使用CubeMX软件，则可跳过该�?)
+  *   ! ! ! ??
+  *   ?CubeMX????????
+  *   ???????? ???????????????????CubeMX?????????????????? !!! 
+  *   (????CubeMX??????????)
   * 
   *   / * USER CODE BEGIN xxx * /
-  *   //用户程序
+  *   //????
   *   / * USER CODE END xxx * /
   * 
   *   
@@ -52,6 +52,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "global.h"
+#include "debug_uart.h"
 #include "lwmem_porting.h"
 #include "log.h"
 #include <stdio.h>
@@ -97,9 +99,9 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-    //日志打印功能初始�?
+    //??????????
   LOG_INIT();
-  lwmem_assignmem(lwmem_regions); /* 动�?�内存初始化 */
+  lwmem_assignmem(lwmem_regions); /* ????????? */
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -115,9 +117,9 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-    //�?启IIC1
+    //???IIC1
     __HAL_RCC_I2C1_CLK_ENABLE();
-    //�?启DMA传输
+    //???DMA??
     __HAL_RCC_DMA1_CLK_ENABLE();
   /* USER CODE END SysInit */
 
@@ -148,7 +150,7 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
-  //打印信息，与printf()函数的用法一样，能够根据等级进行屏蔽日志输出
+  //??????printf()??????????????????????
   LOG_DEBUG("Start...\r\n");
   /* USER CODE END 2 */
 
@@ -157,6 +159,14 @@ int main(void)
 
   /* Call init function for freertos objects (in cmsis_os2.c) */
   MX_FREERTOS_Init();
+
+  /* USER CODE BEGIN RTOS_PreScheduler */
+  /* 在调度器启动前完成 host_link 与遥测依赖，避免 imu_task 空指针/永久阻塞 */
+  motors_init();
+  buttons_init();
+  packet_init();
+  debug_uart_boot_banner();
+  /* USER CODE END RTOS_PreScheduler */
 
   /* Start scheduler */
   osKernelStart();

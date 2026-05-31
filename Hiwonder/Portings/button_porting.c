@@ -22,8 +22,14 @@ ButtonObjectTypeDef* buttons[2];
 static uint32_t button_read_pin(ButtonObjectTypeDef *self); /* 读取按键IO状态 */
 
 
+static uint8_t buttons_initialized;
+
 void buttons_init(void)
 {
+    if(buttons_initialized) {
+        return;
+    }
+    buttons_initialized = 1;
 	for(int i = 0; i < 2; ++i) {
 		buttons[i] = LWMEM_CCM_MALLOC(sizeof(ButtonObjectTypeDef));
 		button_object_init(buttons[i]);

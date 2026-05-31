@@ -1,7 +1,8 @@
 /**
  * @file syscall.c
  * @author Lu Yongping (Lucas@hiwonder.com)
- * @brief 标准库桩函数的重定向
+ * @brief 标准库桩函数的重定向 -> USART1 115200（调试口 / rrc_flash，与烧录同口）
+ *        PlatformIO 构建使用 Hiwonder/Misc/debug_uart.c 中的 __io_putchar
  * @version 0.1
  * @date 2023-05-12
  *

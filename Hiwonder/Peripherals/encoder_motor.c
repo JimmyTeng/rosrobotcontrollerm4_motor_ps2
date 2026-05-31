@@ -39,6 +39,15 @@ void encoder_update(EncoderMotorObjectTypeDef *self, float period, int64_t count
 void encoder_motor_control(EncoderMotorObjectTypeDef *self, float period) 
 {
 	float pulse = 0;
+    /* 目标为 0 时不跑 PID，避免编码器噪声导致上电乱转 */
+    if(self->pid_controller.set_point > -0.001f && self->pid_controller.set_point < 0.001f) {
+        self->pid_controller.output = 0.0f;
+        self->pid_controller.previous_0_err = 0.0f;
+        self->pid_controller.previous_1_err = 0.0f;
+        self->set_pulse(self, 0);
+        self->current_pulse = 0;
+        return;
+    }
     pid_controller_update(&self->pid_controller, self->rps, period);   /* 更新 PID控制器 */
     pulse = self->current_pulse + self->pid_controller.output; /* 计算新的 PWM 值 */
 	

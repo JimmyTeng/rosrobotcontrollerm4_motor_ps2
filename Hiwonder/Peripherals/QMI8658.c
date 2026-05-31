@@ -230,6 +230,41 @@ void axis_convert(float data_a[3], float data_g[3], int layout)
 
 
 
+void read_raw_lsb(int16_t acc[3], int16_t gyro[3], uint16_t *acc_ssvt, uint16_t *gyr_ssvt)
+{
+    short raw_acc_xyz[3];
+    short raw_gyro_xyz[3];
+    float acc_f[3];
+    float gyro_f[3];
+
+    raw_acc_xyz[0] = (short)((unsigned short)(readWord_reg(Qmi8658Register_Ax_L)));
+    raw_acc_xyz[1] = (short)((unsigned short)(readWord_reg(Qmi8658Register_Ay_L)));
+    raw_acc_xyz[2] = (short)((unsigned short)(readWord_reg(Qmi8658Register_Az_L)));
+    raw_gyro_xyz[0] = (short)((unsigned short)(readWord_reg(Qmi8658Register_Gx_L)));
+    raw_gyro_xyz[1] = (short)((unsigned short)(readWord_reg(Qmi8658Register_Gy_L)));
+    raw_gyro_xyz[2] = (short)((unsigned short)(readWord_reg(Qmi8658Register_Gz_L)));
+
+    acc_f[0] = (float)raw_acc_xyz[0];
+    acc_f[1] = (float)raw_acc_xyz[1];
+    acc_f[2] = (float)raw_acc_xyz[2];
+    gyro_f[0] = (float)raw_gyro_xyz[0];
+    gyro_f[1] = (float)raw_gyro_xyz[1];
+    gyro_f[2] = (float)raw_gyro_xyz[2];
+    axis_convert(acc_f, gyro_f, 0);
+    acc[0] = (int16_t)acc_f[0];
+    acc[1] = (int16_t)acc_f[1];
+    acc[2] = (int16_t)acc_f[2];
+    gyro[0] = (int16_t)gyro_f[0];
+    gyro[1] = (int16_t)gyro_f[1];
+    gyro[2] = (int16_t)gyro_f[2];
+    if(acc_ssvt != NULL) {
+        *acc_ssvt = g_imu.ssvt_a;
+    }
+    if(gyr_ssvt != NULL) {
+        *gyr_ssvt = g_imu.ssvt_g;
+    }
+}
+
 void read_xyz(float acc[3], float gyro[3])
 {
 	unsigned char	status;

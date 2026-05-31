@@ -4,7 +4,11 @@
 #include "checksum.h"
 #include "cmsis_os2.h"
 #include "global.h"
+#include "global_conf.h"
 #include "lwmem_porting.h"
+#if USE_PACKET_V2
+#include "packet_v2.h"
+#endif
 /**
     * @brief 串口命令回调注册
     * @param self 协议实例
@@ -103,9 +107,13 @@ struct PacketRawFrame* packet_serialize(uint8_t func, void* data_raw, size_t dat
 
 int packet_transmit(struct PacketController *self, uint8_t func, void* data, size_t data_len)
 {
+#if USE_PACKET_V2
+    return packet_v2_transmit(self, func, data, data_len);
+#else
     struct PacketRawFrame *p = packet_serialize(func, data, data_len);
     if(NULL != p) {
         return self->send_packet(self, p);
     }
     return -2;
+#endif
 }

@@ -34,9 +34,14 @@ void sensor_telemetry_tick_from_isr(void)
 
 void sensor_telemetry_wait_tick(void)
 {
+    if(sensor_telemetry_tickHandle == NULL) {
+        osDelay(10);
+        return;
+    }
     (void)osSemaphoreAcquire(sensor_telemetry_tickHandle, osWaitForever);
 }
 
+#if !USE_PACKET_V2
 void sensor_telemetry_publish(void)
 {
     PacketReportMotorEncoder_TypeDef enc_report;
@@ -56,6 +61,7 @@ void sensor_telemetry_publish(void)
                     sizeof(PacketReportIMU_Raw_TypeDef));
 #endif
 }
+#endif /* !USE_PACKET_V2 */
 
 #if !ENABLE_IMU
 static void sensor_telemetry_task_entry(void *argument)

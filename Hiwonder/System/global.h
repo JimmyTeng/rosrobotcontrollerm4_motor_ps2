@@ -52,6 +52,8 @@ typedef struct{
 
 
 void set_chassis_type(uint8_t chassis_type);
+void motors_init(void);
+void buttons_init(void);
 
 
 #endif

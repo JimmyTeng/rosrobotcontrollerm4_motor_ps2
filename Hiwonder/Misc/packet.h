@@ -55,6 +55,7 @@ enum PACKET_FUNCTION {
     PACKET_FUNC_IMU,
     PACKET_FUNC_GAMEPAD,
     PACKET_FUNC_SBUS,
+    PACKET_FUNC_TELEMETRY = 10,
     PACKET_FUNC_NONE,
 };
 
@@ -78,7 +79,9 @@ struct PacketController {
     lwrb_t *rx_fifo;            /**< 接收缓存FIFO对象 */
 
     int (*send_packet)(struct PacketController *self, struct PacketRawFrame *frame);
+    int (*send_wire)(struct PacketController *self, uint8_t *wire, uint16_t len);
     struct PacketRawFrame* tx_dma_buffer; /**< 正在发送的DMA缓存*/
+    uint16_t tx_wire_len;
 };
 
 
@@ -99,6 +102,7 @@ void packet_register_callback(struct PacketController *self, enum PACKET_FUNCTIO
  * @param self 协议实例
  * @retval None
  */
+void packet_init(void);
 void packet_recv(struct PacketController *self);
 
 /**

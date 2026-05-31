@@ -90,6 +90,7 @@
 #include "QMI8658.h"
 #include "u8g2_porting.h"
 #include "sensor_telemetry.h"
+#include "log.h"
 
 #if ENABLE_IMU
 /**
@@ -104,9 +105,9 @@ void imu_task_entry(void *argument)
     (void)argument;
 
     if(begin() == 0) {
-        printf("qmi8658_init fail");
+        LOG_WARN("qmi8658_init fail\r\n");
     } else {
-        printf("qmi8658_init success");
+        LOG_INFO("qmi8658_init ok\r\n");
     }
     osDelay(100);
 

@@ -33,6 +33,7 @@ usage() {
 用法: $(basename "$0") [选项]
 
   --port PORT           串口：别名(rrc_flash/host_link)、by-id:...、by-path:... 或 /dev/ttyACM*
+                        rrc_flash = USART1 115200（烧录 + printf 调试，勿与 host_link 混用）
   --list-ports          列出串口及稳定地址映射后退出
   --baud RATE           波特率 (默认 115200)
   --init SEQUENCE       初始化序列

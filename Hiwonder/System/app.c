@@ -74,26 +74,8 @@ void app_task_entry(void *argument)
     chassis_init();     
     //选择底盘类型
     // 注意：履带底盘车 使用 CHASSIS_TYPE_TANKBLACK  ! ! ! 
-    set_chassis_type(CHASSIS_TYPE_TANKBLACK);   
-		
-			static float speed = 200.0f;
-				
-			 chassis->set_velocity(chassis, speed, 0, 0);
-				osDelay(4000);
-			 chassis->stop(chassis);
-				osDelay(500);	
-			 chassis->set_velocity(chassis, -speed, 0, 0);
-				osDelay(4000);
-			 chassis->stop(chassis);
-				osDelay(500);	
-			 chassis->set_velocity_radius(chassis, speed, 150, true);
-				osDelay(500);
-			 chassis->stop(chassis);
-				osDelay(500);	
-			 chassis->set_velocity(chassis, speed, 0, 0);
-				osDelay(4000);
-			 chassis->stop(chassis);
-				osDelay(4000);
+    set_chassis_type(CHASSIS_TYPE_TANKBLACK);
+    chassis->stop(chassis);
 
 	// 循环  : RTOS任务中的循环，必须要有osDelay或者其他系统阻塞函数，否则会导致系统异常
     for(;;) {

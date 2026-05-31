@@ -18,7 +18,9 @@ void battery_check_timer_callback(void *argument)
 		volt = volt > 20000 ? 0 : volt;
         battery_volt = battery_volt == 0 ? volt : battery_volt * 0.95f + volt * 0.05f;
     }
-	printf("%d\r\n", adc_value[0]);
+#if ENABLE_DEBUG_UART && DEBUG_BATTERY_ADC_RAW
+    printf("%d\r\n", adc_value[0]);
+#endif
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 2);
 
 #if  ENABLE_BLUETOOTH&&ENABLE_BLUETOOTH_BATTERY_REPORT

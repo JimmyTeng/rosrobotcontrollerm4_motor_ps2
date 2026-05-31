@@ -9,6 +9,19 @@
  *
  */
 #include "button.h"
+#include "global_conf.h"
+
+#if USE_PACKET_V2
+extern void button_event_latch_update(uint8_t key_id, uint8_t event);
+static void button_notify(ButtonObjectTypeDef *self, ButtonEventIDEnum event)
+{
+    button_event_latch_update((uint8_t)self->id, (uint8_t)event);
+    self->event_callback(self, event);
+}
+#define BUTTON_NOTIFY button_notify
+#else
+#define BUTTON_NOTIFY(self, event) (self)->event_callback((self), (event))
+#endif
 
 
 void button_task_handler(ButtonObjectTypeDef *self, uint32_t period)
@@ -29,14 +42,14 @@ void button_task_handler(ButtonObjectTypeDef *self, uint32_t period)
     switch(self->stage) {
         case BUTTON_STAGE_NORMAL: {
             if(self->last_pin_filtered) {
-                self->event_callback(self, BUTTON_EVENT_PRESSED); /* 触发按键按下事件 */
+                BUTTON_NOTIFY(self, BUTTON_EVENT_PRESSED); /* 触发按键按下事件 */
                 if(self->ticks_count < self->combin_th && self->combin_counter > 0) { /* 只有在连击计数不为零时连击才起作用 */
                     self->combin_counter += 1;
                     if(self->combin_counter == 2) {  /* 双击回调 */
-                        self->event_callback(self, BUTTON_EVENT_DOUBLE_CLICK);
+                        BUTTON_NOTIFY(self, BUTTON_EVENT_DOUBLE_CLICK);
                     }
                     if(self->combin_counter == 3) {  /* 三连击回调 */
-                        self->event_callback(self, BUTTON_EVENT_TRIPLE_CLICK);
+                        BUTTON_NOTIFY(self, BUTTON_EVENT_TRIPLE_CLICK);
                     }
                 }
                 self->ticks_count = 0;
@@ -52,13 +65,13 @@ void button_task_handler(ButtonObjectTypeDef *self, uint32_t period)
         case BUTTON_STAGE_PRESS: {
             if(self->last_pin_filtered) {
                 if(self->ticks_count > self->lp_th) { /* 超过长按触发时间 */
-                    self->event_callback(self, BUTTON_EVENT_LONGPRESS); /* 触发长按事件 */
+                    BUTTON_NOTIFY(self, BUTTON_EVENT_LONGPRESS); /* 触发长按事件 */
                     self->ticks_count = 0;
                     self->stage = BUTTON_STAGE_LONGPRESS; /* 状态转为长按 */
                 }
             } else { /* 按钮松开 */
-                self->event_callback(self, BUTTON_EVENT_RELEASE_FROM_SP); /* 触发短按松开事件 */
-                self->event_callback(self, BUTTON_EVENT_CLICK);  /* 触发点击松开事件 */
+                BUTTON_NOTIFY(self, BUTTON_EVENT_RELEASE_FROM_SP); /* 触发短按松开事件 */
+                BUTTON_NOTIFY(self, BUTTON_EVENT_CLICK);  /* 触发点击松开事件 */
                 self->combin_counter = self->combin_counter == 0 ? 1 : self->combin_counter; /* 只有在连击计数不为零时连击才起作用 */
                 self->stage = BUTTON_STAGE_NORMAL;
             }
@@ -67,11 +80,11 @@ void button_task_handler(ButtonObjectTypeDef *self, uint32_t period)
         case BUTTON_STAGE_LONGPRESS: {
             if(self->last_pin_filtered) {
                 if(self->ticks_count > self->repeat_th)  {
-                    self->event_callback(self, BUTTON_EVENT_LONGPRESS_REPEAT); /* 触发长按重复重复事件 */
+                    BUTTON_NOTIFY(self, BUTTON_EVENT_LONGPRESS_REPEAT); /* 触发长按重复重复事件 */
                     self->ticks_count = 0; /* 重新计时下一次重复触发 */
                 }
             } else { /* 按钮松开 */
-                self->event_callback(self, BUTTON_EVENT_RELEASE_FROM_LP);  /* 触发长按松开事件 */
+                BUTTON_NOTIFY(self, BUTTON_EVENT_RELEASE_FROM_LP);  /* 触发长按松开事件 */
                 self->combin_counter = 0;                /* 长按不可连击, 连击计数为0时连击计数不生效 */
                 self->ticks_count = self->combin_th + 1; /* 长按不可连击, 让连击计时直接超时 */
                 self->stage = BUTTON_STAGE_NORMAL;

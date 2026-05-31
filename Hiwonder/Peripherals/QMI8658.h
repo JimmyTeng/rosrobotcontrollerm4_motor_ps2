@@ -54,6 +54,8 @@ void config_gyro(enum qmi8658_GyrRange range, enum qmi8658_GyrOdr odr, enum qmi8
 
 void read_sensor_data(float acc[3], float gyro[3]);
 void read_xyz(float acc[3], float gyro[3]);
+void read_raw_lsb(int16_t acc[3], int16_t gyro[3], uint16_t *acc_ssvt, uint16_t *gyr_ssvt);
+EulerAngles get_euler_angles(float gx, float gy, float gz, float ax, float ay, float az);
 void axis_convert(float data_a[3], float data_g[3], int layout);
 void config_reg(unsigned char low_power);
 void enableSensors(unsigned char enableFlags);

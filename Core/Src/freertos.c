@@ -66,7 +66,7 @@ const osThreadAttr_t defaultTask_attributes = {
 };
 /* Definitions for imu_task */
 osThreadId_t imu_taskHandle;
-uint32_t imu_taskBuffer[ 128 ];
+uint32_t imu_taskBuffer[ 512 ];
 osStaticThreadDef_t imu_taskControlBlock;
 const osThreadAttr_t imu_task_attributes = {
   .name = "imu_task",

@@ -12,6 +12,14 @@ EncoderMotorObjectTypeDef *motors[4];
 
 static void packet_handler(struct PacketRawFrame *frame);
 
+static void motor_apply_speed(uint8_t motor_id, float speed)
+{
+    if(motor_id >= 4 || motors[motor_id] == NULL) {
+        return;
+    }
+    encoder_motor_set_speed(motors[motor_id], speed);
+}
+
 static void motor1_set_pulse(EncoderMotorObjectTypeDef *self, int speed);
 static void motor2_set_pulse(EncoderMotorObjectTypeDef *self, int speed);
 static void motor3_set_pulse(EncoderMotorObjectTypeDef *self, int speed);
@@ -45,8 +53,14 @@ void set_motor_type(EncoderMotorObjectTypeDef *motor, MotorTypeEnum type) {
 	}
 }
 
+static uint8_t motors_initialized;
+
 void motors_init(void)
 {
+    if(motors_initialized) {
+        return;
+    }
+    motors_initialized = 1;
     for(int i = 0; i < 4; ++i) {
         motors[i] = LWMEM_CCM_MALLOC(sizeof( EncoderMotorObjectTypeDef));
         encoder_motor_object_init(motors[i]);
@@ -123,6 +137,11 @@ void motors_init(void)
     __HAL_TIM_ENABLE(&htim7);
 
     packet_register_callback(&packet_controller, PACKET_FUNC_MOTOR, packet_handler);
+    for(int i = 0; i < 4; ++i) {
+        encoder_motor_set_speed(motors[i], 0.0f);
+        motors[i]->set_pulse(motors[i], 0);
+        motors[i]->current_pulse = 0;
+    }
     sensor_telemetry_init();
 #if !ENABLE_IMU
     sensor_telemetry_task_start();
@@ -235,34 +254,56 @@ typedef struct {
 */
 static void packet_handler(struct PacketRawFrame *frame)
 {
+    if(frame->data_length < 1) {
+        return;
+    }
 
     switch(frame->data_and_checksum[0]) {
         case 0: {
-            MotorSignalCtrlCommandTypeDef *mscc = NULL;
-            mscc = (MotorSignalCtrlCommandTypeDef *)frame->data_and_checksum;
-            motors[mscc->motor_id]->pid_controller.set_point = mscc->speed;
+            if(frame->data_length < sizeof(MotorSignalCtrlCommandTypeDef)) {
+                break;
+            }
+            MotorSignalCtrlCommandTypeDef *mscc =
+                (MotorSignalCtrlCommandTypeDef *)frame->data_and_checksum;
+            motor_apply_speed(mscc->motor_id, mscc->speed);
             break;
         }
         case 1: {
-            MotorMutilCtrlCommandTypeDef *mmcc = NULL;
-            mmcc = (MotorMutilCtrlCommandTypeDef *)frame->data_and_checksum;
-            for(int i = 0; i < mmcc->motor_num; ++i) {
-                motors[mmcc->units[i].motor_id]->pid_controller.set_point = mmcc->units[i].speed;
+            if(frame->data_length < 2) {
+                break;
+            }
+            MotorMutilCtrlCommandTypeDef *mmcc =
+                (MotorMutilCtrlCommandTypeDef *)frame->data_and_checksum;
+            uint8_t n = mmcc->motor_num;
+            if(n > 4) {
+                break;
+            }
+            if(frame->data_length < (uint8_t)(2 + n * sizeof(MotorCtrlCmdUnit))) {
+                break;
+            }
+            for(int i = 0; i < n; ++i) {
+                motor_apply_speed(mmcc->units[i].motor_id, mmcc->units[i].speed);
             }
             break;
         }
         case 2:  {
-            MotorSignalStopCommandTypedef *mssc = NULL;
-            mssc = (MotorSignalStopCommandTypedef *)frame->data_and_checksum;
-            motors[mssc->motor_id]->pid_controller.set_point = 0;
+            if(frame->data_length < sizeof(MotorSignalStopCommandTypedef)) {
+                break;
+            }
+            MotorSignalStopCommandTypedef *mssc =
+                (MotorSignalStopCommandTypedef *)frame->data_and_checksum;
+            motor_apply_speed(mssc->motor_id, 0.0f);
             break;
         }
         case 3: {
-            MotorMultiStopCommandTypedef *mmsc = NULL;
-            mmsc = (MotorMultiStopCommandTypedef *)frame->data_and_checksum;
+            if(frame->data_length < sizeof(MotorMultiStopCommandTypedef)) {
+                break;
+            }
+            MotorMultiStopCommandTypedef *mmsc =
+                (MotorMultiStopCommandTypedef *)frame->data_and_checksum;
             for(int i = 0; i < 4; ++i) {
                 if(mmsc->motor_mask & (0x01 << i)) {
-                    motors[i]->pid_controller.set_point = 0;
+                    motor_apply_speed((uint8_t)i, 0.0f);
                 }
             }
             break;
