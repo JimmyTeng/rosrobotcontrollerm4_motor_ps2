@@ -3,106 +3,263 @@
 #include "global.h"
 #include "lwmem_porting.h"
 #include "global_conf.h"
+#include "Fusion.h"
 
 #define M_PI			(3.14159265358979323846f)
 #define ONE_G			(9.807f)
 #define QFABS(x)		(((x)<0.0f)?(-1.0f*(x)):(x))
+#define IMU_FUSION_DT_S         (0.01f)
+#define IMU_RAD_TO_DEG          (57.295779513082320876798154814105f)
+#define IMU_FUSION_RATE_HZ      (100u)
+/* 静态标定：默认 200 点 × 10 ms ≈ 2 s，仅需静止，不要求水平 */
+#define IMU_STATIC_CAL_INTERVAL_MS  (10u)
+#define IMU_STATIC_CAL_DEFAULT_SAMPLES (200u)
+#define IMU_STATIC_GYRO_MAX_RAD_S   (0.35f)
+#define IMU_STATIC_ACC_MIN_G        (0.85f)
+#define IMU_STATIC_ACC_MAX_G        (1.15f)
 
 static qmi8658_state g_imu;
+static FusionAhrs g_fusion_ahrs;
+static FusionOffset g_gyro_offset;
+static float g_gyro_bias_rad[3];
+static bool g_gyro_bias_valid = false;
+/** 可选：用户显式调用 imu_set_pose_zero() 后，将当时姿态作为 roll/pitch/yaw 零点 */
+static FusionQuaternion g_pose_zero_offset = {
+    .element = {.w = 1.0f, .x = 0.0f, .y = 0.0f, .z = 0.0f},
+};
+static bool g_pose_zero_active = false;
+static ImuFusedPose g_fused_pose = {
+    .q = {1.0f, 0.0f, 0.0f, 0.0f},
+};
+static bool g_fused_pose_valid = false;
 
-#define Kp 10.0f               
-#define Ki 0.008f            
-/* #define pi 3.14159265f */
-#define halfT 0.002127f        /*half the sample period*/
-/* 参与计算的加速度单位g 陀螺仪单位是弧度/s()【度*pi/180=弧度】*/
-
-
-/* 魔法函数InvSqrt()相当于1.0/sqrt() */
-static float invSqrt(float number)
+static FusionQuaternion imu_quaternion_conjugate(const FusionQuaternion quaternion)
 {
-    volatile long i;
-    volatile float x, y;
-    volatile const float f = 1.5F;
+    return (FusionQuaternion){
+        .element = {
+            .w = quaternion.element.w,
+            .x = -quaternion.element.x,
+            .y = -quaternion.element.y,
+            .z = -quaternion.element.z,
+        },
+    };
+}
 
-    x = number * 0.5F;
-    y = number;
-    i = * (( long * ) &y);
-    i = 0x5f375a86 - ( i >> 1 );
-    y = * (( float * ) &i);
-    y = y * ( f - ( x * y * y ) );
-    return y;
+static bool imu_is_stationary_sample(float gx, float gy, float gz, float ax, float ay, float az)
+{
+    const float acc_norm_g = sqrtf(ax * ax + ay * ay + az * az) / ONE_G;
+    const float gyro_mag = sqrtf(gx * gx + gy * gy + gz * gz);
+
+    if(acc_norm_g < IMU_STATIC_ACC_MIN_G || acc_norm_g > IMU_STATIC_ACC_MAX_G) {
+        return false;
+    }
+    if(gyro_mag > IMU_STATIC_GYRO_MAX_RAD_S) {
+        return false;
+    }
+    return true;
+}
+
+static void imu_seed_gyro_offset_from_bias(void)
+{
+    if(!g_gyro_bias_valid) {
+        return;
+    }
+
+    g_gyro_offset.gyroscopeOffset.axis.x = g_gyro_bias_rad[0] * IMU_RAD_TO_DEG;
+    g_gyro_offset.gyroscopeOffset.axis.y = g_gyro_bias_rad[1] * IMU_RAD_TO_DEG;
+    g_gyro_offset.gyroscopeOffset.axis.z = g_gyro_bias_rad[2] * IMU_RAD_TO_DEG;
+    g_gyro_offset.timer = g_gyro_offset.timeout;
+    g_gyro_offset.cal_count = 0;
+}
+
+static void imu_fusion_reset_attitude(void)
+{
+    FusionAhrsInitialise(&g_fusion_ahrs);
+    const FusionAhrsSettings settings = {
+        .convention = FusionConventionNwu,
+        .gain = 0.5f,
+        .accelerationRejection = 10.0f,
+        .magneticRejection = 0.0f,
+        .rejectionTimeout = 0,
+    };
+    FusionAhrsSetSettings(&g_fusion_ahrs, &settings);
+    g_fused_pose.q[0] = 1.0f;
+    g_fused_pose.q[1] = 0.0f;
+    g_fused_pose.q[2] = 0.0f;
+    g_fused_pose.q[3] = 0.0f;
+    g_fused_pose.roll = 0.0f;
+    g_fused_pose.pitch = 0.0f;
+    g_fused_pose.yaw = 0.0f;
+    g_fused_pose_valid = false;
+}
+
+void imu_fusion_reset(void)
+{
+    FusionOffsetInitialise(&g_gyro_offset, IMU_FUSION_RATE_HZ);
+    imu_seed_gyro_offset_from_bias();
+    imu_fusion_reset_attitude();
+}
+
+bool imu_static_calibrate(uint16_t sample_count)
+{
+    if(sample_count == 0) {
+        sample_count = IMU_STATIC_CAL_DEFAULT_SAMPLES;
+    }
+
+    float sum_gx = 0.0f;
+    float sum_gy = 0.0f;
+    float sum_gz = 0.0f;
+    uint16_t accepted = 0;
+    const uint16_t max_attempts = (uint16_t)(sample_count * 3U);
+
+    for(uint16_t attempt = 0; attempt < max_attempts && accepted < sample_count; ++attempt) {
+        float acc[3];
+        float gyro[3];
+
+        read_xyz(acc, gyro);
+        if(!imu_is_stationary_sample(gyro[0], gyro[1], gyro[2], acc[0], acc[1], acc[2])) {
+            osDelay(IMU_STATIC_CAL_INTERVAL_MS);
+            continue;
+        }
+
+        sum_gx += gyro[0];
+        sum_gy += gyro[1];
+        sum_gz += gyro[2];
+        ++accepted;
+        osDelay(IMU_STATIC_CAL_INTERVAL_MS);
+    }
+
+    if(accepted < (sample_count / 4U)) {
+        LOG_WARN("imu_static_calibrate: only %u/%u stable samples\r\n",
+                 (unsigned)accepted, (unsigned)sample_count);
+        return false;
+    }
+
+    g_gyro_bias_rad[0] = sum_gx / (float)accepted;
+    g_gyro_bias_rad[1] = sum_gy / (float)accepted;
+    g_gyro_bias_rad[2] = sum_gz / (float)accepted;
+    g_gyro_bias_valid = true;
+
+    imu_seed_gyro_offset_from_bias();
+    imu_fusion_reset_attitude();
+
+    LOG_INFO("imu gyro bias rad/s: %+.5f %+.5f %+.5f (n=%u)\r\n",
+             g_gyro_bias_rad[0], g_gyro_bias_rad[1], g_gyro_bias_rad[2],
+             (unsigned)accepted);
+    return true;
+}
+
+bool imu_get_gyro_bias(float bias_rad[3])
+{
+    if(!g_gyro_bias_valid || bias_rad == NULL) {
+        return false;
+    }
+
+    bias_rad[0] = g_gyro_bias_rad[0];
+    bias_rad[1] = g_gyro_bias_rad[1];
+    bias_rad[2] = g_gyro_bias_rad[2];
+    return true;
+}
+
+bool imu_is_gyro_calibrated(void)
+{
+    return g_gyro_bias_valid;
+}
+
+void imu_clear_gyro_bias(void)
+{
+    g_gyro_bias_valid = false;
+    g_gyro_bias_rad[0] = 0.0f;
+    g_gyro_bias_rad[1] = 0.0f;
+    g_gyro_bias_rad[2] = 0.0f;
+    FusionOffsetInitialise(&g_gyro_offset, IMU_FUSION_RATE_HZ);
+}
+
+void imu_set_pose_zero(void)
+{
+    const FusionQuaternion quaternion = FusionAhrsGetQuaternion(&g_fusion_ahrs);
+    g_pose_zero_offset = imu_quaternion_conjugate(quaternion);
+    g_pose_zero_active = true;
+}
+
+void imu_clear_pose_zero(void)
+{
+    g_pose_zero_active = false;
+    g_pose_zero_offset.element.w = 1.0f;
+    g_pose_zero_offset.element.x = 0.0f;
+    g_pose_zero_offset.element.y = 0.0f;
+    g_pose_zero_offset.element.z = 0.0f;
+}
+
+bool imu_is_pose_zero_active(void)
+{
+    return g_pose_zero_active;
+}
+
+static bool imu_sample_valid(float ax, float ay, float az)
+{
+    const float mag_sq = ax * ax + ay * ay + az * az;
+    return mag_sq > (0.05f * ONE_G * ONE_G);
+}
+
+ImuFusedPose imu_fusion_update(float gx, float gy, float gz, float ax, float ay, float az)
+{
+    if(!imu_sample_valid(ax, ay, az)) {
+        if(g_fused_pose_valid) {
+            return g_fused_pose;
+        }
+        ImuFusedPose identity = {
+            .q = {1.0f, 0.0f, 0.0f, 0.0f},
+        };
+        return identity;
+    }
+
+    FusionVector gyroscope = {
+        .axis = {
+            .x = gx * IMU_RAD_TO_DEG,
+            .y = gy * IMU_RAD_TO_DEG,
+            .z = gz * IMU_RAD_TO_DEG,
+        },
+    };
+    const FusionVector accelerometer = {
+        .axis = {
+            .x = ax / ONE_G,
+            .y = ay / ONE_G,
+            .z = az / ONE_G,
+        },
+    };
+
+    gyroscope = FusionOffsetUpdate(&g_gyro_offset, gyroscope);
+    FusionAhrsUpdateNoMagnetometer(&g_fusion_ahrs, gyroscope, accelerometer, IMU_FUSION_DT_S);
+
+    FusionQuaternion quaternion = FusionAhrsGetQuaternion(&g_fusion_ahrs);
+    if(g_pose_zero_active) {
+        quaternion = FusionQuaternionNormalise(
+            FusionQuaternionMultiply(g_pose_zero_offset, quaternion));
+    }
+
+    const FusionEuler euler = FusionQuaternionToEuler(quaternion);
+
+    g_fused_pose.q[0] = quaternion.element.w;
+    g_fused_pose.q[1] = quaternion.element.x;
+    g_fused_pose.q[2] = quaternion.element.y;
+    g_fused_pose.q[3] = quaternion.element.z;
+    g_fused_pose.roll = FusionDegreesToRadians(euler.angle.roll);
+    g_fused_pose.pitch = FusionDegreesToRadians(euler.angle.pitch);
+    g_fused_pose.yaw = FusionDegreesToRadians(euler.angle.yaw);
+    g_fused_pose_valid = true;
+    return g_fused_pose;
 }
 
 EulerAngles get_euler_angles(float gx, float gy, float gz, float ax, float ay, float az)
 {
-  EulerAngles eulaer;
-  float roll, pitch,yaw ;
-  float exInt, eyInt, ezInt;
-  float q0 = 1.0f, q1 = 0.0f, q2 = 0.0f, q3 = 0.0f;	/** quaternion of sensor frame relative to auxiliary frame */
+    const ImuFusedPose pose = imu_fusion_update(gx, gy, gz, ax, ay, az);
+    EulerAngles euler;
 
-    float recipNorm;
-    float vx, vy, vz;
-    float ex, ey, ez;
-
-    float q0q0 = q0*q0;
-    float q0q1 = q0*q1;
-    float q0q2 = q0*q2;
-
-    float q1q1 = q1*q1;
-    float q1q3 = q1*q3;
-
-    float q2q2 = q2*q2;
-    float q2q3 = q2*q3;
-
-    float q3q3 = q3*q3;
-
-
-    if( ax*ay*az==0)
-        return eulaer;
-    /* 对加速度数据进行归一化处理 */
-    recipNorm = invSqrt( ax* ax +ay*ay + az*az);
-    ax = ax *recipNorm;
-    ay = ay *recipNorm;
-    az = az *recipNorm;
-    /* DCM矩阵旋转 */
-    vx = 2*(q1q3 - q0q2);
-    vy = 2*(q0q1 + q2q3);
-    vz = q0q0 - q1q1 - q2q2 + q3q3 ;
-    /* 在机体坐标系下做向量叉积得到补偿数据 */
-    ex = ay*vz - az*vy ;
-    ey = az*vx - ax*vz ;
-    ez = ax*vy - ay*vx ;
-    /* 对误差进行PI计算，补偿角速度 */
-    exInt = exInt + ex * Ki;
-    eyInt = eyInt + ey * Ki;
-    ezInt = ezInt + ez * Ki;
-
-    gx = gx + Kp*ex + exInt;
-    gy = gy + Kp*ey + eyInt;
-    gz = gz + Kp*ez + ezInt;
-    /* 按照四元素微分公式进行四元素更新 */
-    q0 = q0 + (-q1*gx - q2*gy - q3*gz)*halfT;
-    q1 = q1 + (q0*gx + q2*gz - q3*gy)*halfT;
-    q2 = q2 + (q0*gy - q1*gz + q3*gx)*halfT;
-    q3 = q3 + (q0*gz + q1*gy - q2*gx)*halfT;
-
-    recipNorm = invSqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3);
-
-    q0 = q0*recipNorm;
-    q1 = q1*recipNorm;
-    q2 = q2*recipNorm;
-    q3 = q3*recipNorm;
-
-    roll =  atan2f(2*q2*q3 + 2*q0*q1, -2*q1*q1 - 2*q2*q2 + 1)*57.3f;
-    pitch =  asinf(2*q1*q3 - 2*q0*q2)*57.3f;
-    yaw  =  -atan2f(2*q1*q2 + 2*q0*q3, -2*q2*q2 -2*q3*q3 + 1)*57.3f;
-
-    eulaer.pitch = pitch;
-    eulaer.roll = roll;
-    eulaer.yaw = yaw;
-
-    // printf("pitch:%.2f roll:%.2f yaw:%.2f\r\n",pitch,roll,yaw);
-    return eulaer;
+    euler.roll = pose.roll * IMU_RAD_TO_DEG;
+    euler.pitch = pose.pitch * IMU_RAD_TO_DEG;
+    euler.yaw = pose.yaw * IMU_RAD_TO_DEG;
+    return euler;
 }
 
 
@@ -538,6 +695,7 @@ unsigned char begin(void)
 #endif
 		config_reg(0);
 		enableSensors(g_imu.cfg.enSensors);
+		imu_fusion_reset();
 		dump_reg();
 #if defined(QMI8658_USE_CALI)
 		memset(&g_cali, 0, sizeof(g_cali));

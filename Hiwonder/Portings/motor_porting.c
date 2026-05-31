@@ -34,23 +34,11 @@ void set_motor_param(EncoderMotorObjectTypeDef *motor, int32_t tpc, float rps_li
     motor->pid_controller.kd = kd;
 }
 
-void set_motor_type(EncoderMotorObjectTypeDef *motor, MotorTypeEnum type) {
-	switch(type) {
-		case MOTOR_TYPE_JGB520:
-			set_motor_param(motor, MOTOR_JGB520_TICKS_PER_CIRCLE, MOTOR_JGB520_RPS_LIMIT, MOTOR_JGB520_PID_KP, MOTOR_JGB520_PID_KI, MOTOR_JGB520_PID_KD);
-			break;
-		case MOTOR_TYPE_JGB37:
-			set_motor_param(motor, MOTOR_JGB37_TICKS_PER_CIRCLE, MOTOR_JGB37_RPS_LIMIT, MOTOR_JGB37_PID_KP, MOTOR_JGB37_PID_KI, MOTOR_JGB37_PID_KD);
-			break;
-		case MOTOR_TYPE_JGA27:
-			set_motor_param(motor, MOTOR_JGA27_TICKS_PER_CIRCLE, MOTOR_JGA27_RPS_LIMIT, MOTOR_JGA27_PID_KP, MOTOR_JGA27_PID_KI, MOTOR_JGA27_PID_KD);
-			break;
-		case MOTOR_TYPE_JGB528:
-			set_motor_param(motor, MOTOR_JGB528_TICKS_PER_CIRCLE, MOTOR_JGB528_RPS_LIMIT, MOTOR_JGB528_PID_KP, MOTOR_JGB528_PID_KI, MOTOR_JGB528_PID_KD);
-			break;
-		default:
-			break;
-	}
+void set_motor_type(EncoderMotorObjectTypeDef *motor, MotorTypeEnum type)
+{
+    (void)type;
+    set_motor_param(motor, MOTOR_JGB37_TICKS_PER_CIRCLE, MOTOR_JGB37_RPS_LIMIT,
+                    MOTOR_JGB37_PID_KP, MOTOR_JGB37_PID_KI, MOTOR_JGB37_PID_KD);
 }
 
 static uint8_t motors_initialized;

@@ -108,7 +108,7 @@ void music_play_init(void)
 {
     const osThreadAttr_t music_task_attributes = {
         .name = "music_task",
-        .stack_size = 512 * 4,
+        .stack_size = 256 * 4,
         .priority = osPriorityBelowNormal,
     };
     music_task_handle = osThreadNew(music_task_entry, NULL, &music_task_attributes);

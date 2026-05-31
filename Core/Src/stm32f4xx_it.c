@@ -418,19 +418,11 @@ void TIM8_BRK_TIM12_IRQHandler(void)
 void TIM8_UP_TIM13_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM8_UP_TIM13_IRQn 0 */
-    extern PWMServoObjectTypeDef *pwm_servos[4];
-    static uint32_t pwm_servo_index = 0;
-
     if(__HAL_TIM_GET_FLAG(&htim13, TIM_FLAG_CC1) != RESET) {
         __HAL_TIM_CLEAR_FLAG(&htim13, TIM_FLAG_CC1);
-        pwm_servos[pwm_servo_index]->write_pin(0);
-        pwm_servo_index = pwm_servo_index == 3 ? 0 : pwm_servo_index + 1;
     }
     if(__HAL_TIM_GET_FLAG(&htim13, TIM_FLAG_UPDATE) != RESET) {
         __HAL_TIM_CLEAR_FLAG(&htim13, TIM_FLAG_UPDATE);
-        pwm_servos[pwm_servo_index]->write_pin(1);
-        pwm_servo_duty_compare(pwm_servos[pwm_servo_index]);
-        __HAL_TIM_SET_COMPARE(&htim13, TIM_CHANNEL_1, pwm_servos[pwm_servo_index]->duty_raw);
     }
   /* USER CODE END TIM8_UP_TIM13_IRQn 0 */
   /* USER CODE BEGIN TIM8_UP_TIM13_IRQn 1 */
@@ -531,42 +523,13 @@ void TIM7_IRQHandler(void)
 void USART6_IRQHandler(void)
 {
   /* USER CODE BEGIN USART6_IRQn 0 */
-	
-//  HAL_UART_IRQHandler(&huart6);
-  
-    extern SerialServoControllerTypeDef serial_servo_controller;
-    extern osSemaphoreId_t serial_servo_rx_completeHandle;
-
-
-    if(__HAL_UART_GET_FLAG(&huart6, UART_FLAG_TXE) != RESET) {
-        __HAL_UART_CLEAR_FLAG(&huart6, UART_FLAG_TXE);
-        if(serial_servo_controller.tx_byte_index <( (serial_servo_controller.tx_frame.elements.length + 3) ) ){  /* ?????????? */
-            huart6.Instance->DR = ((uint8_t*)(&serial_servo_controller.tx_frame))[serial_servo_controller.tx_byte_index++]; /* ?????????? */
-        } else {
-            __HAL_UART_DISABLE_IT(&huart6, UART_IT_TXE);
-        }
-    }
-	
-    if(__HAL_UART_GET_FLAG(&huart6, UART_FLAG_TC) != RESET) {
-        __HAL_UART_CLEAR_FLAG(&huart6, UART_FLAG_TC);
-        HAL_GPIO_WritePin(SERIAL_SERVO_RX_EN_GPIO_Port, SERIAL_SERVO_RX_EN_Pin, GPIO_PIN_RESET);  /* ?????? */
-        HAL_GPIO_WritePin(SERIAL_SERVO_TX_EN_GPIO_Port, SERIAL_SERVO_TX_EN_Pin, GPIO_PIN_SET);
-        if(serial_servo_controller.tx_only) {
-            osSemaphoreRelease(serial_servo_rx_completeHandle);
-        }
-	    __HAL_UART_DISABLE_IT(&huart6, UART_IT_TC);
-    }
-
     if(__HAL_UART_GET_FLAG(&huart6, UART_FLAG_RXNE) != RESET) {
         __HAL_UART_CLEAR_FLAG(&huart6, UART_FLAG_RXNE);
-        if(0 == serial_servo_rx_handler(&serial_servo_controller, (uint8_t)(huart6.Instance->DR & (uint8_t)0x00FF))) {
-            osSemaphoreRelease(serial_servo_rx_completeHandle);
-        }
+        (void)huart6.Instance->DR;
     }
   /* USER CODE END USART6_IRQn 0 */
   HAL_UART_IRQHandler(&huart6);
   /* USER CODE BEGIN USART6_IRQn 1 */
-
 
   /* USER CODE END USART6_IRQn 1 */
 }

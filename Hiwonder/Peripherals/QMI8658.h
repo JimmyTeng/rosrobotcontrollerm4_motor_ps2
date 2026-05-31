@@ -13,6 +13,14 @@ typedef struct
   float yaw ;
 } EulerAngles;
 
+/** Fusion AHRS 输出：四元数 (w,x,y,z) + 欧拉角 (rad) */
+typedef struct {
+	float q[4];
+	float roll;
+	float pitch;
+	float yaw;
+} ImuFusedPose;
+
 struct QMI8658
 {
   uint8_t last_status; // status of last I2C transmission
@@ -55,6 +63,17 @@ void config_gyro(enum qmi8658_GyrRange range, enum qmi8658_GyrOdr odr, enum qmi8
 void read_sensor_data(float acc[3], float gyro[3]);
 void read_xyz(float acc[3], float gyro[3]);
 void read_raw_lsb(int16_t acc[3], int16_t gyro[3], uint16_t *acc_ssvt, uint16_t *gyr_ssvt);
+void imu_fusion_reset(void);
+/** 静止平放时采样，估计陀螺零偏 (rad/s) 并写入 FusionOffset；sample_count=0 用默认 200 点 */
+bool imu_static_calibrate(uint16_t sample_count);
+bool imu_get_gyro_bias(float bias_rad[3]);
+bool imu_is_gyro_calibrated(void);
+void imu_clear_gyro_bias(void);
+/** 可选：静止时将当前姿态设为欧拉角零点（不要求水平，需用户主动调用） */
+void imu_set_pose_zero(void);
+void imu_clear_pose_zero(void);
+bool imu_is_pose_zero_active(void);
+ImuFusedPose imu_fusion_update(float gx, float gy, float gz, float ax, float ay, float az);
 EulerAngles get_euler_angles(float gx, float gy, float gz, float ax, float ay, float az);
 void axis_convert(float data_a[3], float data_g[3], int layout);
 void config_reg(unsigned char low_power);

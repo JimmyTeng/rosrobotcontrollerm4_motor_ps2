@@ -8,7 +8,6 @@
 #include "encoder_motor.h"
 #include "button.h"
 #include "QMI8658.h"
-#include <math.h>
 
 _Static_assert(sizeof(PacketTelemetryV3_TypeDef) == PACKET_TELEMETRY_SIZE_V3,
                "PacketTelemetryV3 size must match schema 0x03");
@@ -26,28 +25,6 @@ void button_event_latch_update(uint8_t key_id, uint8_t event)
 }
 
 uint8_t button_telemetry_event_latch[2];
-
-static float deg_to_rad(float deg)
-{
-    return deg * (3.14159265358979323846f / 57.3f);
-}
-
-static void euler_to_quaternion(float roll_deg, float pitch_deg, float yaw_deg, float *q)
-{
-    float roll = deg_to_rad(roll_deg);
-    float pitch = deg_to_rad(pitch_deg);
-    float yaw = deg_to_rad(yaw_deg);
-    float cr = cosf(roll * 0.5f);
-    float sr = sinf(roll * 0.5f);
-    float cp = cosf(pitch * 0.5f);
-    float sp = sinf(pitch * 0.5f);
-    float cy = cosf(yaw * 0.5f);
-    float sy = sinf(yaw * 0.5f);
-    q[0] = cr * cp * cy + sr * sp * sy;
-    q[1] = sr * cp * cy - cr * sp * sy;
-    q[2] = cr * sp * cy + sr * cp * sy;
-    q[3] = cr * cp * sy - sr * sp * cy;
-}
 
 static PacketTelemetryV3_TypeDef telemetry_report;
 
@@ -98,16 +75,14 @@ void sensor_telemetry_publish(void)
     float acc[3];
     float gyro[3];
     read_xyz(acc, gyro);
-    EulerAngles ea = get_euler_angles(gyro[0], gyro[1], gyro[2], acc[0], acc[1], acc[2]);
-    float q[4];
-    euler_to_quaternion(ea.roll, ea.pitch, ea.yaw, q);
-    report->imu_fused.qw = q[0];
-    report->imu_fused.qx = q[1];
-    report->imu_fused.qy = q[2];
-    report->imu_fused.qz = q[3];
-    report->imu_fused.roll = deg_to_rad(ea.roll);
-    report->imu_fused.pitch = deg_to_rad(ea.pitch);
-    report->imu_fused.yaw = deg_to_rad(ea.yaw);
+    ImuFusedPose pose = imu_fusion_update(gyro[0], gyro[1], gyro[2], acc[0], acc[1], acc[2]);
+    report->imu_fused.qw = pose.q[0];
+    report->imu_fused.qx = pose.q[1];
+    report->imu_fused.qy = pose.q[2];
+    report->imu_fused.qz = pose.q[3];
+    report->imu_fused.roll = pose.roll;
+    report->imu_fused.pitch = pose.pitch;
+    report->imu_fused.yaw = pose.yaw;
 #endif
 
     report->buttons.key_num = 2;

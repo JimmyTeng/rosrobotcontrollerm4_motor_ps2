@@ -11,10 +11,10 @@
 
 #include "lwmem.h"
 
-uint8_t lwmem_ram[1024 * 38];
+uint8_t lwmem_ram[1024 * 24];
 
 lwmem_region_t lwmem_regions[] = {
-    { (void*)0x10000000, 1024 * 64 }, /* 顺序不能变， ccmram地址比ram地址低，一定要放前面否则无法正常初始化内存*/
-    { (void*)lwmem_ram,  1024 * 38 },
+    { (void*)0x10000000, 1024 * 32 },
+    { (void*)lwmem_ram,  1024 * 24 },
     { NULL, 0}
 };
