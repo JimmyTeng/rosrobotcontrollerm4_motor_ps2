@@ -2,10 +2,15 @@
 #include "tim.h"
 #include "lwmem_porting.h"
 #include "motors_param.h"
+#include "packet.h"
+#include "packet_reports.h"
+#include "sensor_telemetry.h"
+#include "cmsis_os2.h"
 
 /* 全局变量 */
 EncoderMotorObjectTypeDef *motors[4];
-/* static void packet_handler(struct PacketRawFrame *frame); */
+
+static void packet_handler(struct PacketRawFrame *frame);
 
 static void motor1_set_pulse(EncoderMotorObjectTypeDef *self, int speed);
 static void motor2_set_pulse(EncoderMotorObjectTypeDef *self, int speed);
@@ -108,7 +113,7 @@ void motors_init(void)
     __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE(&htim3);
-    HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
+    HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
 
 
     // 测速更新定时器 每10ms计算一次编码器数值来获取速度
@@ -117,7 +122,11 @@ void motors_init(void)
     __HAL_TIM_ENABLE_IT(&htim7, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE(&htim7);
 
-    //packet_register_callback(&packet_controller, PACKET_FUNC_MOTOR, packet_handler);
+    packet_register_callback(&packet_controller, PACKET_FUNC_MOTOR, packet_handler);
+    sensor_telemetry_init();
+#if !ENABLE_IMU
+    sensor_telemetry_task_start();
+#endif
 }
 
 static void motor1_set_pulse(EncoderMotorObjectTypeDef *self, int speed)
@@ -224,7 +233,6 @@ typedef struct {
 * @param frame 数据帧
 * @retval void
 */
-/*
 static void packet_handler(struct PacketRawFrame *frame)
 {
 
@@ -263,6 +271,4 @@ static void packet_handler(struct PacketRawFrame *frame)
             break;
     }
 }
-
-*/
 

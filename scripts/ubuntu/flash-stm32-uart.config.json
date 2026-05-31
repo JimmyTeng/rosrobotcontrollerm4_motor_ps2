@@ -1,8 +1,22 @@
 {
-  "Port": "/dev/ttyACM0",
+  "Port": "rrc_flash",
+  "Ports": {
+    "rrc_flash": {
+      "label": "RRC 固件烧录 (CH340)",
+      "by_id": "usb-1a86_USB_Single_Serial_5A25001530-if00",
+      "usb_path": "pci-0000:68:00.3-usb-0:1.3:1.0",
+      "serial": "5A25001530"
+    },
+    "host_link": {
+      "label": "上位机通信 (CH340)",
+      "by_id": "usb-1a86_USB_Single_Serial_5A25001516-if00",
+      "usb_path": "pci-0000:68:00.3-usb-0:1.1:1.0",
+      "serial": "5A25001516"
+    }
+  },
   "Baud": 115200,
   "InitSequence": "dtr=0,rts=1,-100,dtr=1",
   "UseInit": true,
-  "LastFirmware": "/home/jimmy/project/rosrobotcontrollerm4_motor_ps2/PlatformIO/.pio/build/release/firmware.bin",
+  "LastFirmware": "/home/jimmy/project/tank/mcu_rosrobotcontrollerm4_motor_ps2/PlatformIO/.pio/build/release/firmware.bin",
   "LastMode": "Full"
 }

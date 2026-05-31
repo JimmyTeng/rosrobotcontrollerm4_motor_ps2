@@ -1,0 +1,13 @@
+{
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/PlatformIO",
+    "--query-driver=**/arm-none-eabi-*"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/PlatformIO/compile_commands.json",
+  "files.associations": {
+    "*.h": "c",
+    "global.h": "c",
+    "global_conf.h": "c"
+  }
+}

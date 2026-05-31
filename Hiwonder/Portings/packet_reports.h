@@ -79,4 +79,18 @@ typedef struct {
 	uint8_t sub_command;
 	uint8_t args[8];
 }PacketReportPWMServoTypeDef;
+
+/* 编码器电机状态上报：子命令 0x04，与下行 0x00~0x03 区分 */
+#define MOTOR_ENCODER_REPORT_CMD  0x04
+
+typedef struct {
+    uint8_t motor_id;
+    float rps;
+} MotorEncoderReportUnit;
+
+typedef struct {
+    uint8_t cmd;
+    uint8_t motor_num;
+    MotorEncoderReportUnit units[4];
+} PacketReportMotorEncoder_TypeDef;
 #pragma pack()

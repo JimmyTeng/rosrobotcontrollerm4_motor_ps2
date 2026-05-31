@@ -11,6 +11,8 @@ DEFAULT_INIT_SEQUENCE="dtr=0,rts=1,-100,dtr=1"
 FLYMCU_INIT_LABEL="DTR低电平复位 RTS高电平进入BootLoader"
 
 PORT=""
+PORT_SELECTOR=""
+LIST_PORTS=false
 BAUD=115200
 INIT_SEQUENCE=""
 FIRMWARE=""
@@ -30,7 +32,8 @@ usage() {
     cat <<EOF
 用法: $(basename "$0") [选项]
 
-  --port PORT           串口设备 (如 /dev/ttyUSB0)
+  --port PORT           串口：别名(rrc_flash/host_link)、by-id:...、by-path:... 或 /dev/ttyACM*
+  --list-ports          列出串口及稳定地址映射后退出
   --baud RATE           波特率 (默认 115200)
   --init SEQUENCE       初始化序列
   --firmware PATH       固件路径
@@ -50,7 +53,8 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --port) PORT="$2"; shift 2 ;;
+        --port) PORT_SELECTOR="$2"; shift 2 ;;
+        --list-ports) LIST_PORTS=true; shift ;;
         --baud) BAUD="$2"; shift 2 ;;
         --init) INIT_SEQUENCE="$2"; shift 2 ;;
         --firmware) FIRMWARE="$2"; shift 2 ;;
@@ -86,18 +90,22 @@ PY
 }
 
 save_config() {
-    local port="$1" baud="$2" init="$3" use_init="$4" firmware="$5" mode="$6"
-    "$PYTHON" - "$CONFIG_PATH" "$port" "$baud" "$init" "$use_init" "$firmware" "$mode" <<'PY'
+    local port_selector="$1" baud="$2" init="$3" use_init="$4" firmware="$5" mode="$6"
+    "$PYTHON" - "$CONFIG_PATH" "$port_selector" "$baud" "$init" "$use_init" "$firmware" "$mode" <<'PY'
 import json, sys
-path, port, baud, init, use_init, firmware, mode = sys.argv[1:8]
-data = {
-    "Port": port or None,
-    "Baud": int(baud),
-    "InitSequence": init,
-    "UseInit": use_init == "true",
-    "LastFirmware": firmware,
-    "LastMode": mode,
-}
+path, port_selector, baud, init, use_init, firmware, mode = sys.argv[1:8]
+data = {}
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except (OSError, json.JSONDecodeError):
+    pass
+data["Port"] = port_selector or None
+data["Baud"] = int(baud)
+data["InitSequence"] = init
+data["UseInit"] = use_init == "true"
+data["LastFirmware"] = firmware
+data["LastMode"] = mode
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
@@ -111,8 +119,8 @@ apply_saved_config() {
         INIT_SEQUENCE="$("$PYTHON" -c "import json,sys; c=json.loads(sys.argv[1]); print(c.get('InitSequence') or '')" "$cfg")"
         [[ -z "$INIT_SEQUENCE" ]] && INIT_SEQUENCE="$DEFAULT_INIT_SEQUENCE"
     fi
-    if [[ -z "$PORT" ]]; then
-        PORT="$("$PYTHON" -c "import json,sys; c=json.loads(sys.argv[1]); print(c.get('Port') or '')" "$cfg")"
+    if [[ -z "$PORT_SELECTOR" ]]; then
+        PORT_SELECTOR="$("$PYTHON" -c "import json,sys; c=json.loads(sys.argv[1]); print(c.get('Port') or '')" "$cfg")"
     fi
     if [[ "$NO_INIT" != true ]]; then
         local saved_use
@@ -138,18 +146,58 @@ EOF
     exit 1
 }
 
-get_serial_ports() {
-    local ports=()
-    local p
-    shopt -s nullglob
-    for p in /dev/ttyUSB* /dev/ttyACM*; do
-        [[ -e "$p" ]] && ports+=("$p")
-    done
-    shopt -u nullglob
-    if [[ ${#ports[@]} -eq 0 ]]; then
-        return
+serial_port_list() {
+    "$PYTHON" "$SCRIPT_DIR/serial_port_resolve.py" list "$CONFIG_PATH"
+}
+
+serial_port_resolve() {
+    local selector="$1"
+    "$PYTHON" "$SCRIPT_DIR/serial_port_resolve.py" resolve "$selector" "$CONFIG_PATH"
+}
+
+# 将别名/by-id/路径 解析为当前 /dev/ttyACM*
+resolve_port_selector() {
+    local selector="$1"
+    [[ -z "$selector" ]] && return 1
+    if [[ "$selector" == /dev/* ]] && [[ -e "$selector" ]]; then
+        echo "$selector"
+        return 0
     fi
-    printf '%s\n' "${ports[@]}" | sort -V
+    serial_port_resolve "$selector"
+}
+
+get_serial_ports() {
+    serial_port_list | awk '{print $1}'
+}
+
+get_config_port_aliases() {
+    [[ -f "$CONFIG_PATH" ]] || return 0
+    "$PYTHON" -c "
+import json
+with open('$CONFIG_PATH', encoding='utf-8') as f:
+    ports = json.load(f).get('Ports') or {}
+for name in sorted(ports):
+    print(name)
+"
+}
+
+# 解析 PORT_SELECTOR -> PORT；失败时保留原值供后续扫描
+finalize_port_resolution() {
+    if [[ -z "$PORT_SELECTOR" ]]; then
+        PORT=""
+        return 0
+    fi
+    if resolved="$(resolve_port_selector "$PORT_SELECTOR" 2>/dev/null)"; then
+        PORT="$resolved"
+        return 0
+    fi
+    if [[ "$PORT_SELECTOR" == /dev/* ]]; then
+        PORT="$PORT_SELECTOR"
+        return 0
+    fi
+    echo "警告: 无法解析串口 '$PORT_SELECTOR'，将尝试自动扫描。" >&2
+    PORT=""
+    return 1
 }
 
 resolve_firmware_path() {
@@ -347,6 +395,13 @@ find_bootloader_port() {
     fi
 
     local -a try_list=()
+    local alias
+    while IFS= read -r alias; do
+        [[ -n "$alias" ]] || continue
+        if dev="$(resolve_port_selector "$alias" 2>/dev/null)"; then
+            try_list+=("$dev")
+        fi
+    done < <(get_config_port_aliases)
     [[ -n "$PORT" ]] && try_list+=("$PORT")
     try_list+=("${all_ports[@]}")
     local -a unique=()
@@ -396,6 +451,7 @@ invoke_platformio_build() {
 invoke_flash_workflow() {
     local exe="$1" mode="$2" auto_pick="${3:-false}" do_build="${4:-false}"
 
+    finalize_port_resolution || true
     [[ "$do_build" == true ]] && invoke_platformio_build
 
     local firmware_path
@@ -422,7 +478,7 @@ invoke_flash_workflow() {
 
     echo ""
     echo "======== 烧录参数 ========"
-    echo "串口     : $PORT"
+    echo "串口     : $PORT$( [[ -n "$PORT_SELECTOR" && "$PORT_SELECTOR" != "$PORT" ]] && echo " ($PORT_SELECTOR)" )"
     echo "波特率   : $BAUD"
     echo "初始化   : $init_desc"
     echo "固件     : $firmware_path"
@@ -465,7 +521,8 @@ invoke_flash_workflow() {
             ;;
     esac
 
-    save_config "$PORT" "$BAUD" "$INIT_SEQUENCE" "$USE_INIT" "$firmware_path" "$mode"
+    local save_selector="${PORT_SELECTOR:-$PORT}"
+    save_config "$save_selector" "$BAUD" "$INIT_SEQUENCE" "$USE_INIT" "$firmware_path" "$mode"
     echo ""
     echo "完成。"
 }
@@ -475,9 +532,13 @@ show_main_menu() {
     while true; do
         clear || true
         local ports fw_name port_info
-        ports="$(get_serial_ports | paste -sd', ' -)"
+        ports="$(serial_port_list | paste -sd' | ' -)"
         [[ -z "$ports" ]] && ports="无"
-        port_info="${PORT:-(自动)}"
+        if [[ -n "$PORT_SELECTOR" ]]; then
+            port_info="$PORT_SELECTOR -> ${PORT:-未解析}"
+        else
+            port_info="${PORT:-(自动)}"
+        fi
         fw_name="(未找到，请先编译或设置)"
         if fw_path="$(resolve_firmware_path "$FIRMWARE" 2>/dev/null)"; then
             fw_name="$(basename "$fw_path")"
@@ -511,7 +572,7 @@ show_main_menu() {
             2) invoke_flash_workflow "$exe" Unprotect "$([[ -z "$PORT" ]] && echo true || echo false)" false || true; read -r -p "按 Enter 继续..." _ ;;
             3) invoke_flash_workflow "$exe" Erase "$([[ -z "$PORT" ]] && echo true || echo false)" false || true; read -r -p "按 Enter 继续..." _ ;;
             4) SKIP_UNPROTECT=true; invoke_flash_workflow "$exe" WriteOnly "$([[ -z "$PORT" ]] && echo true || echo false)" false || true; read -r -p "按 Enter 继续..." _ ;;
-            5) local saved="$PORT"; PORT=""; invoke_flash_workflow "$exe" Full true false || true; PORT="$saved"; read -r -p "按 Enter 继续..." _ ;;
+            5) local saved_sel="$PORT_SELECTOR" saved_port="$PORT"; PORT_SELECTOR=""; PORT=""; invoke_flash_workflow "$exe" Full true false || true; PORT_SELECTOR="$saved_sel"; PORT="$saved_port"; read -r -p "按 Enter 继续..." _ ;;
             6) invoke_flash_workflow "$exe" Full "$([[ -z "$PORT" ]] && echo true || echo false)" true || true; read -r -p "按 Enter 继续..." _ ;;
             7) show_settings_menu ;;
             8) "$SCRIPT_DIR/install-stm32flash.sh" || true; read -r -p "按 Enter 继续..." _ ;;
@@ -527,7 +588,11 @@ show_settings_menu() {
         if fw_path="$(resolve_firmware_path "$FIRMWARE" 2>/dev/null)"; then
             fw_name="$(basename "$fw_path")"
         fi
-        port_info="${PORT:-(自动)}"
+        if [[ -n "$PORT_SELECTOR" ]]; then
+            port_info="$PORT_SELECTOR -> ${PORT:-未解析}"
+        else
+            port_info="${PORT:-(自动)}"
+        fi
 
         echo ""
         echo "--- 设置 ---"
@@ -547,22 +612,39 @@ show_settings_menu() {
         case "$choice" in
             0) return ;;
             1)
-                local -a ports=()
-                while IFS= read -r p; do [[ -n "$p" ]] && ports+=("$p"); done < <(get_serial_ports)
-                echo "--- 选择串口 ---"
+                echo "--- 选择串口（按稳定地址，非 ACM 编号）---"
+                serial_port_list
+                echo ""
+                local -a aliases=()
+                while IFS= read -r a; do [[ -n "$a" ]] && aliases+=("$a"); done < <(get_config_port_aliases)
                 local i
-                for i in "${!ports[@]}"; do
+                for i in "${!aliases[@]}"; do
                     local mark=""
-                    [[ "${ports[$i]}" == "$PORT" ]] && mark=" <-- 当前"
-                    echo "  $((i + 1)). ${ports[$i]}$mark"
+                    [[ "${aliases[$i]}" == "$PORT_SELECTOR" ]] && mark=" <-- 当前"
+                    echo "  $((i + 1)). 别名 ${aliases[$i]}$mark"
+                done
+                local base=$(( ${#aliases[@]} + 1 ))
+                local -a devs=()
+                while IFS= read -r p; do [[ -n "$p" ]] && devs+=("$p"); done < <(get_serial_ports)
+                for i in "${!devs[@]}"; do
+                    local mark=""
+                    [[ "${devs[$i]}" == "$PORT" && -z "$PORT_SELECTOR" ]] && mark=" <-- 当前"
+                    echo "  $((base + i)). 设备 ${devs[$i]}$mark"
                 done
                 echo "  A. 自动扫描并连接"
                 echo "  0. 返回"
                 read -r -p "请选择: " c
                 if [[ "$c" == "0" ]]; then continue; fi
-                if [[ "$c" =~ ^[aA]$ ]]; then PORT=""; continue; fi
-                if [[ "$c" =~ ^[0-9]+$ ]] && (( c >= 1 && c <= ${#ports[@]} )); then
-                    PORT="${ports[$((c - 1))]}"
+                if [[ "$c" =~ ^[aA]$ ]]; then PORT_SELECTOR=""; PORT=""; continue; fi
+                if [[ "$c" =~ ^[0-9]+$ ]] && (( c >= 1 && c <= ${#aliases[@]} )); then
+                    PORT_SELECTOR="${aliases[$((c - 1))]}"
+                    finalize_port_resolution || true
+                    continue
+                fi
+                if [[ "$c" =~ ^[0-9]+$ ]] && (( c > ${#aliases[@]} && c - base < ${#devs[@]} )); then
+                    PORT="${devs[$((c - base))]}"
+                    PORT_SELECTOR="$PORT"
+                    continue
                 fi
                 ;;
             2)
@@ -585,12 +667,22 @@ show_settings_menu() {
 }
 
 is_cli_mode() {
-    [[ -n "$PORT" || -n "$FIRMWARE" || -n "$INIT_SEQUENCE" || "$BUILD" == true || "$AUTO" == true \
+    [[ -n "$PORT_SELECTOR" || -n "$FIRMWARE" || -n "$INIT_SEQUENCE" || "$BUILD" == true || "$AUTO" == true \
+        || "$LIST_PORTS" == true \
         || "$ONLY_UNPROTECT" == true || "$ONLY_ERASE" == true || "$SKIP_UNPROTECT" == true \
         || "$SKIP_VERIFY" == true || "$NO_RUN" == true || "$NO_INIT" == true ]]
 }
 
 apply_saved_config
+
+if [[ "$LIST_PORTS" == true ]]; then
+    echo "串口列表（稳定地址）:"
+    serial_port_list
+    exit 0
+fi
+
+finalize_port_resolution || true
+
 STM32FLASH="$(resolve_stm32flash)"
 
 if [[ "$MENU" == true ]] || { ! is_cli_mode && [[ "$AUTO" != true ]]; }; then
@@ -616,4 +708,5 @@ mode=Full
 [[ "$ONLY_ERASE" == true ]] && mode=Erase
 [[ "$SKIP_UNPROTECT" == true && "$ONLY_UNPROTECT" != true && "$ONLY_ERASE" != true ]] && mode=WriteOnly
 
+finalize_port_resolution || true
 invoke_flash_workflow "$STM32FLASH" "$mode" "$([[ -z "$PORT" ]] && echo true || echo false)" "$BUILD"

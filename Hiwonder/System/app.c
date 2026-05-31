@@ -17,6 +17,7 @@
 #include "global.h"
 #include "adc.h"
 #include "u8g2_porting.h"
+#include "music_handle.h"
 
 /* 云台舵机限位参数 */
 #define  HOLDER_MIN   500  	//对应舵机的0°
@@ -27,6 +28,7 @@
 
 /* 硬件初始化声明 */
 void buzzers_init(void);    //蜂鸣器
+void buttons_init(void);    //板载按键
 void motors_init(void);     //电机
 void pwm_servos_init(void); //舵机
 void chassis_init(void);    //小车参数初始化
@@ -39,7 +41,8 @@ void app_task_entry(void *argument)
 {
     /* 声明外部句柄 */
     //蜂鸣器句柄
-    extern osTimerId_t buzzer_timerHandle;  
+    extern osTimerId_t buzzer_timerHandle;
+    extern osTimerId_t button_timerHandle;
 	//电量监控句柄
     extern osTimerId_t battery_check_timerHandle;
 	
@@ -50,11 +53,15 @@ void app_task_entry(void *argument)
 
     /* 硬件初始化 */
     motors_init();      //电机初始化
-		pwm_servos_init();  //云台舵机初始化
+	pwm_servos_init();  //云台舵机初始化
     buzzers_init();     //蜂鸣器初始化
+    buttons_init();     //板载按键初始化
+    button_register_callback(buttons[0], music_key1_callback);
+    music_play_init();  //音乐播放任务
     //开启蜂鸣器定时器，让其在中断中运作，后面调用接口函数即可
     //参数1：定时器句柄 ， 参数2：定时器的工作间隔 ms
-    osTimerStart(buzzer_timerHandle, BUZZER_TASK_PERIOD);   
+    osTimerStart(buzzer_timerHandle, BUZZER_TASK_PERIOD);
+    osTimerStart(button_timerHandle, BUTTON_TASK_PERIOD);
 	//开启电量健康定时器，实时监控电量
     osTimerStart(battery_check_timerHandle, BATTERY_TASK_PERIOD);
 

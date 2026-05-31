@@ -62,10 +62,10 @@ void chassis_init(void)
     jetank.set_motors = jetank_set_motors;
 
     diff_chassis_object_init(&tank_black);
-    tank_black.base.chassis_type = CHASSIS_TYPE_JETTANK;
-    tank_black.correction_factor = JETTANK_CORRECITION_FACTOR;
-    tank_black.wheel_diameter = JETTANK_WHEEL_DIAMETER;
-    tank_black.shaft_length = JETTANK_SHAFT_LENGTH;
+    tank_black.base.chassis_type = CHASSIS_TYPE_TANKBLACK;
+    tank_black.correction_factor = TANKBLACK_CORRECITION_FACTOR;
+    tank_black.wheel_diameter = TANKBLACK_WHEEL_DIAMETER;
+    tank_black.shaft_length = TANKBLACK_SHAFT_LENGTH;
     tank_black.set_motors = tankblack_set_motors;
 
     diff_chassis_object_init(&ti4wd);

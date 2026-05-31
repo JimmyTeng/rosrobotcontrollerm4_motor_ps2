@@ -89,6 +89,7 @@
 #include "global_conf.h"
 #include "QMI8658.h"
 #include "u8g2_porting.h"
+#include "sensor_telemetry.h"
 
 #if ENABLE_IMU
 /**
@@ -100,36 +101,19 @@ struct QMI8658 qmi8658;
 		
 void imu_task_entry(void *argument)
 {
+    (void)argument;
 
-	//声明IMU的外部句柄
-    extern osSemaphoreId_t IMU_data_readyHandle;
-	extern osMutexId_t oled_mutexHandle;
-	//声明存储姿态数据数组
-    float rpy[3];
-
-    if(begin() == 0) 
-    {
+    if(begin() == 0) {
         printf("qmi8658_init fail");
-    }else{
-		printf("qmi8658_init success");
-	}
+    } else {
+        printf("qmi8658_init success");
+    }
     osDelay(100);
-    PacketReportIMU_Raw_TypeDef report;
-		
+
+    /* TIM7 100 Hz 节拍：码盘 rps 快照 + IMU 读数，同一时刻上报 */
     for(;;) {
-		//等待IMU中断发送的信号量，若没有，则一直阻塞等待 osWaitForever
-        osSemaphoreAcquire(IMU_data_readyHandle, osWaitForever);
-
-		//获取欧拉角
-		//GetEulerAngles(&rpy[0],&rpy[1],&rpy[2]);
-        //printf("%f,%f,%f\r\n",rpy[0],rpy[1],rpy[2]);
-
-		read_xyz(report.array.accel_array,report.array.gyro_array);
-			
-		//获取Roll、Pitch、重力加速度值请放开下2行注释(第2行注释语句需要配合树莓派等上位机运行搭配ros开发功能包使用) 
-        //printf("%d,%d,%d\r\n",(int)report.array.accel_array[0],(int)report.array.accel_array[1],(int)report.array.accel_array[2]);
-        //packet_transmit(&packet_controller, PACKET_FUNC_IMU, &report, sizeof(PacketReportIMU_Raw_TypeDef));
-        osDelay(50);
+        sensor_telemetry_wait_tick();
+        sensor_telemetry_publish();
     }
 }
 #endif

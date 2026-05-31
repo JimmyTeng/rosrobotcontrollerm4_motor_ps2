@@ -2607,6 +2607,11 @@
               <FilePath>..\Hiwonder\Portings\imu_porting.c</FilePath>
             </File>
             <File>
+              <FileName>sensor_telemetry_porting.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Hiwonder\Portings\sensor_telemetry_porting.c</FilePath>
+            </File>
+            <File>
               <FileName>lcd_porting.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Hiwonder\Portings\lcd_porting.c</FilePath>
